@@ -1,0 +1,75 @@
+services:
+  pg_db:
+    image: postgres:latest
+    container_name: user_db
+    environment:
+      POSTGRES_DB: fitness_user_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: jaat
+    ports:
+      - "5432:5432"
+    volumes:
+      - user_service_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+  mongodb:
+    image: mongo:latest
+    container_name: activity_db
+    environment:
+      MONGO_INITDB_DATABASE: fitness-app
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+      - ./mongo-init.js:/docker-entrypoint-initdb.d/mongo-init.js:ro
+    restart: unless-stopped
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: fitness_rabbitmq
+    environment:
+      RABBIT_MQ_DEFAULT_USER: guest
+      RABBIT_MQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  keycloak_db:
+    image: postgres:15
+    container_name: keycloak_db
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+    ports:
+      - "5433:5432"
+    volumes:
+      - keycloak_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3.3
+    container_name: fitness_keycloak
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://keycloak_db:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KC_HOSTNAME: localhost
+    ports:
+      - "8181:8080"
+    depends_on:
+      - keycloak_db
+    restart: unless-stopped
+    command: start-dev
+volumes:
+  user_service_db_data:
+  mongodb_data:
+  rabbitmq_data:
+  keycloak_db_data:

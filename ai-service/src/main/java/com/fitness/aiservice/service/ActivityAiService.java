@@ -6,8 +6,14 @@ import com.fitness.aiservice.model.Activity;
 import com.fitness.aiservice.model.Recommendation;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.hc.client5.http.async.AsyncExecChain;
 import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.View;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Scheduler;
+import reactor.core.scheduler.Schedulers;
 
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -19,12 +25,22 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ActivityAiService {
     private final GeminiService geminiService;
+    private final View error;
 
-    public Recommendation generateRecommendation(Activity activity) {
-        String prompt = generatePrompt(activity);
-        String aiResponse = geminiService.getAnswer(prompt);
-        log.info("AI response: {}", aiResponse);
-        return processAIResponse(activity, aiResponse);
+    public Mono<Recommendation> generateRecommendation(Activity activity) {
+        return Mono.fromCallable(() -> {
+                    log.info("Generating AI processing activity: {}", activity);
+                    String prompt = generatePrompt(activity);
+                    String aiResponse = geminiService.getAnswer(prompt);
+                    log.info("AI processing response: {}", aiResponse);
+                    return processAIResponse(activity, aiResponse);
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .timeout(Duration.ofSeconds(60))
+                .doOnSuccess(rec -> log.info("AI processing completed for activity: {}", activity.getId()))
+                .doOnError(error -> log.error("AI processing failed for activity {}: {}",
+                                              activity.getId(), error.getMessage()))
+                .onErrorReturn(createDefaultRecommendation(activity)); // This ensures you ALWAYS get a recommendation
     }
 
     private Recommendation processAIResponse(Activity activity, String aiResponse) {
@@ -64,8 +80,7 @@ public class ActivityAiService {
                     .improvements(improvements)
                     .suggestions(suggestions)
                     .safety(safety)
-                    .createdAt(LocalDateTime.now())
-                    .build();
+                    .createdAt(LocalDateTime.now()).build();
         } catch (Exception e) {
             e.printStackTrace();
             return createDefaultRecommendation(activity);

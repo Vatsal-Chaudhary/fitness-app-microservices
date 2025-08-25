@@ -7,6 +7,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.stereotype.Service;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 
 @Service
 @Slf4j
@@ -20,8 +22,16 @@ public class ActivityMessageListener {
     public void processActivity(Activity activity) {
         log.info("Processing activity: {}", activity);
 //        log.info("Generating recommendation for activity: {}", aiService.generateRecommendation(activity));
-        Recommendation recommendation = aiService.generateRecommendation(activity);
-        recommendationRepo.save(recommendation);
+        aiService.generateRecommendation(activity)
+                .flatMap(recommendation ->
+                                 reactor.core.publisher.Mono.fromCallable(() -> recommendationRepo.save(recommendation))
+                                         .subscribeOn(Schedulers.boundedElastic())
+                )
+                .doOnSuccess(savedRec ->
+                                     log.info("Recommendation saved for activity: {}", activity.getId()))
+                .doOnError(error ->
+                                   log.error("Failed to save recommendation for activity {}: {}",
+                                             activity.getId(), error.getMessage()))
+                .subscribe();
     }
-
 }

@@ -19,7 +19,15 @@ public class UserService {
     public UserResponse register(RegisterRequest request) {
         if (userRepo.existsByEmail(request.getEmail())) {
             User existingUser = userRepo.findByEmail(request.getEmail());
-            return getUserResponse(existingUser);
+            // Check if it's the same user (same Keycloak ID)
+            if (existingUser.getKeycloakId().equals(request.getKeycloakId())) {
+                log.info("User already registered with email: {}", request.getEmail());
+                return getUserResponse(existingUser);
+            } else {
+                // Different person trying to use same email
+                log.error("Email already exists for different user: {}", request.getEmail());
+                throw new EmailAlreadyExistsException("Email is already registered");
+            }
         }
         log.info("Registering user with Keycloak ID: {}", request.getKeycloakId());
 
